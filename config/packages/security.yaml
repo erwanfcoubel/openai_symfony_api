@@ -1,0 +1,36 @@
+security:
+    enable_authenticator_manager: true
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+            algorithm: plaintext
+    providers:
+        backend_users:
+            memory:
+                users:
+                    admin: { password: '%env(resolve:ADMIN_AUTH_PASSWORD)%'}
+    firewalls:
+        dev:
+            pattern: ^/(_(profiler|wdt)|css|images|js)/
+            security: false
+        login:
+            pattern: ^/login
+            stateless: true
+            json_login:
+                check_path: /login_check
+                username_path: username
+                password_path: password
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+
+        main:
+            stateless: true
+            lazy: true
+            provider: backend_users
+            pattern: ^/.
+            security: true
+            jwt: ~
+
+    access_control:
+        - { path: ^/login, roles: PUBLIC_ACCESS }
+        - { path: ^/, roles: IS_AUTHENTICATED_FULLY }
+
