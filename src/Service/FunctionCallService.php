@@ -1,25 +1,32 @@
 <?php
 
-// Service permettant l'appel de fonction à l'interieur de cette classe (piste de refacto en interfaces pour ne pas avoir de
-// logique métier à l'intérieur de celle-ci )
-
 namespace App\Service;
 
-use AllowDynamicProperties;
-use App\Service\Api\ApiExampleService;
-use App\Structure\FunctionCallStructure;
+use App\Enumeration\ResponseType;
+use App\Enumeration\StatutsLivraison;
+use App\Service\Api\ApiCefService;
 use Exception;
 use Psr\Log\LoggerInterface;
 
-#[AllowDynamicProperties] class FunctionCallService
+class FunctionCallService
 {
     /**
-     * @param ApiExampleService $apiExampleService
-     * @param LoggerInterface   $logger
+     * @var ApiCefService $apiCefService
      */
-    public function __construct(ApiExampleService $apiExampleService, LoggerInterface $logger)
+    private ApiCefService $apiCefService;
+
+    /**
+     * @var LoggerInterface $logger
+     */
+    private LoggerInterface $logger;
+
+    /**
+     * @param ApiCefService   $apiCefService
+     * @param LoggerInterface $logger
+     */
+    public function __construct(ApiCefService $apiCefService, LoggerInterface $logger)
     {
-        $this->apiExampleService = $apiExampleService;
+        $this->apiCefService = $apiCefService;
         $this->logger = $logger;
     }
 
@@ -34,33 +41,68 @@ use Psr\Log\LoggerInterface;
         if (is_callable([$this, $nomFonction])) {
             return $this->$nomFonction(...$arguments);
         } else {
-            $this->logger->error('Fonction innexistante: ' . $nomFonction);
+            $this->logger->error('Fonction inexistante: ' . $nomFonction);
             return [
-                'type' => FunctionCallStructure::TYPE_ERREUR,
+                'type' => ResponseType::TEXT->value,
                 'infos' => 'Pas de fonction correspondante trouvée.'
             ];
         }
     }
 
     /**
-     * @param int $argumentExample
+     * @param int $idCommande
      *
      * @return array
      */
-    public function functionExample(int $argumentExample): array
+    public function avancerProchaineLivraisonPhysique(int $idCommande): array
     {
         try {
-            $test = $this->apiExampleService->functionExample($argumentExample);
+            $statutsCommande = $this->apiCefService->recupererStatutsCommande($idCommande);
+            $prochaineLivraisonPhysique = $this->apiCefService->recupererProchaineLivraisonPhysique($idCommande);
+
+            if ($statutsCommande->statutLivraison != 'actif' || empty($prochaineLivraisonPhysique)) {
+                return [
+                    'type' => ResponseType::TEXT->value,
+                    'infos' => $statutsCommande->statutLivraison != StatutsLivraison::ACTIF->value ? 'Les livraisons ne sont pas actives sur ce dossier' : 'Il n\'y a pas de prochaine livraison',
+                ];
+            }
 
             return [
-                'type' => FunctionCallStructure::TYPE_ACTION,
-                'fonction' => 'functionExample',
-                'infos' => 'Infos example a OpenAI '.$test->infos
+                'type' => ResponseType::ACTION->value,
+                'fonction' => 'avancerProchaineLivraisonPhysique',
+                'btn' => 'avancer la prochaine livraison',
+                'infos' => 'Avancement de la livraison OK'
             ];
         } catch (Exception $exception) {
             $this->logger->error($exception->getMessage());
             return [
-                'type' => FunctionCallStructure::TYPE_ERREUR,
+                'type' => ResponseType::ERREUR->value,
+                'infos' => $exception->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * @param int $idCommande
+     *
+     * @return array
+     */
+    public function infoProchaineLivraison(int $idCommande): array
+    {
+        try {
+            $prochaineLivraison = $this->apiCefService->recupererProchaineLivraisonPhysique($idCommande);
+
+            if (!empty($prochaineLivraison)) {
+                return [
+                    'type' => ResponseType::TEXT->value,
+                    'infos' => 'date:' . $prochaineLivraison->dateExpe . ' expedition numéro: ' . $prochaineLivraison->numExpe
+                ];
+            }
+            return ['type' => ResponseType::TEXT->value, 'infos' => 'Pas de future livraison.'];
+        } catch (Exception $exception) {
+            $this->logger->error($exception->getMessage());
+            return [
+                'type' => ResponseType::ERREUR->value,
                 'infos' => $exception->getMessage()
             ];
         }

@@ -28,29 +28,29 @@ final class ApiReponse
     /**
      * @var string|null
      */
-    protected ?string $contenu = null;
+    protected ?string $content = null;
 
     /**
-     * @param int|null $httpCode
-     * @param array|null $headers
-     * @param array|null $data
-     * @param string|null $contenu
+     * @param int|null    $httpCode
+     * @param array|null  $headers
+     * @param array|null  $data
+     * @param string|null $content
      */
     public function __construct(
-        ?int    $httpCode = Response::HTTP_OK,
-        ?array  $headers = [],
-        ?array  $data = [],
-        ?string $contenu = ''
-    )
-    {
+        ?int $httpCode = Response::HTTP_OK,
+        ?array $headers = [],
+        ?array $data = [],
+        ?string $content = ''
+    ) {
         $this->httpCode = $httpCode;
         $this->headers = $headers;
         $this->data = $data;
-        $this->contenu = $contenu;
+        $this->content = $content;
     }
 
     /**
      * Le code HTTP de la réponse retournée lors de l'appel avec HttpClient
+     *
      * @return int|null
      */
     public function getHttpCode(): ?int
@@ -60,6 +60,7 @@ final class ApiReponse
 
     /**
      * @param int|null $httpCode
+     *
      * @return ApiReponse
      */
     public function setHttpCode(?int $httpCode): ApiReponse
@@ -78,6 +79,7 @@ final class ApiReponse
 
     /**
      * @param array|null $headers
+     *
      * @return ApiReponse
      */
     public function setHeaders(?array $headers): ApiReponse
@@ -88,6 +90,7 @@ final class ApiReponse
 
     /**
      * Le contenu de la réponse retournée lors de l'appel avec HttpClient sous forme d'un array
+     *
      * @return array
      */
     public function getData(): array
@@ -97,6 +100,7 @@ final class ApiReponse
 
     /**
      * @param array|null $data
+     *
      * @return ApiReponse
      */
     public function setData(?array $data): ApiReponse
@@ -107,41 +111,47 @@ final class ApiReponse
 
     /**
      * Le contenu de la réponse retournée lors de l'appel avec HttpClient
+     *
      * @return string|null
      */
-    public function getContenu(): ?string
+    public function getContent(): ?string
     {
-        return $this->contenu;
+        return $this->content;
     }
 
     /**
-     * @param string|null $contenu
+     * @param string|null $content
+     *
      * @return ApiReponse
      */
-    public function setContenu(?string $contenu): ApiReponse
+    public function setContent(?string $content): ApiReponse
     {
-        $this->contenu = $contenu;
+        $this->content = $content;
         return $this;
     }
 
     /**
      * Permet de récupérer une valeur depuis le tableau contenant la réponse de l'API
-     * @param string $cle
-     * @param mixed $valeurParDefaut
+     *
+     * @param string $key
+     * @param mixed  $defaultValue
+     *
      * @return mixed
      */
-    public function get(string $cle, mixed $valeurParDefaut = null): mixed
+    public function get(string $key, mixed $defaultValue = null): mixed
     {
-        return $this->data[$cle] ?? $valeurParDefaut;
+        return $this->data[$key] ?? $defaultValue;
     }
 
     /**
      * Permet de tester l'existence d'une clé dans le tableau de données de la réponse
-     * @param string $cle
+     *
+     * @param string $key
+     *
      * @return bool
      */
-    public function isset(string $cle): bool
+    public function isset(string $key): bool
     {
-        return isset($this->data[$cle]);
+        return isset($this->data[$key]);
     }
 }

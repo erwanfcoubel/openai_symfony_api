@@ -2,10 +2,10 @@
 
 namespace App\Controller;
 
-use AllowDynamicProperties;
+use App\Enumeration\DocumentType;
+use App\Enumeration\ResponseType;
 use App\Service\FineTuningService;
 use App\Service\FunctionCallService;
-use App\Structure\FunctionCallStructure;
 use Exception;
 use OpenAI;
 use Psr\Log\LoggerInterface;
@@ -16,10 +16,35 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
-#[AllowDynamicProperties] #[Route('/messagerie', name: 'messagerie_')]
+#[Route('/chat', name: 'chat_')]
 class ChatController extends AbstractController
 {
-    private array $messages = [];
+
+    /**
+     * @var array
+     */
+    protected array $messages = [];
+
+    /**
+     * @var FineTuningService
+     */
+    protected FineTuningService $fineTuningService;
+
+    /**
+     * @var OpenAI\Client
+     */
+    protected OpenAI\Client $openAiClient;
+
+    /**
+     * @var FunctionCallService
+     */
+    protected FunctionCallService $functionCallService;
+
+    /**
+     * @var LoggerInterface
+     */
+    protected LoggerInterface $logger;
+
 
     /**
      * @param FineTuningService     $fineTuningService
@@ -39,6 +64,7 @@ class ChatController extends AbstractController
         $this->logger = $logger;
     }
 
+
     /**
      * @param Request $request
      *
@@ -47,65 +73,87 @@ class ChatController extends AbstractController
     #[Route('/prompt', name: 'prompt', methods: 'POST')]
     public function prompt(Request $request): JsonResponse
     {
-        $donnees = json_decode($request->getContent());
-        $codeRetour = Response::HTTP_OK;
+        $data = json_decode($request->getContent());
+        $responseCode = Response::HTTP_OK;
         $this->messages = [
             [
                 'role' => 'system',
-                'content' => 'Voici les informations de l\'eleve idCommande:' . $donnees->idCommande . 'Tu es un Chatbot pour le Centre Européen de Formation. Tu réponds aux élèves qui ont souscrit a notre ecole. Soit toujours cordial avec les formules de politesse et finit tes réponses par "Le service administratif."'
+                'content' => 'Instruction for the chatbot'
             ],
-            ['role' => 'user', 'content' => $donnees->message]
+            ['role' => 'user', 'content' => $data->message]
         ];
 
         try {
-            $retour = $this->recupererReponseIA();
+            $result = $this->getAiResponse();
         } catch (Exception $e) {
             $this->logger->error($e->getMessage());
-            $retour = $e->getMessage();
-            $codeRetour = Response::HTTP_INTERNAL_SERVER_ERROR;
+            $result = $e->getMessage();
+            $responseCode = Response::HTTP_INTERNAL_SERVER_ERROR;
         }
 
-        return new JsonResponse($retour, $codeRetour);
+        return new JsonResponse($result, $responseCode);
     }
 
 
     /**
      * @return array
      */
-    public function recupererReponseIA(): array
+    public function getAiResponse(): array
     {
-        $retour = [];
+        $result = [];
 
-        $reponseIA = $this->openAiClient->chat()->create([
+        $AiResponse = $this->openAiClient->chat()->create([
             'model' => 'gpt-3.5-turbo-1106',
             'messages' => $this->messages,
-            'functions' => FunctionCallStructure::FONCTION_LISTES,
+            'functions' => [
+                [
+                    'name' => 'sendDocument',
+                    'description' => 'Send document with the name of it.',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'idClient' => [
+                                'type' => 'integer',
+                                'description' => 'IdClient given by the system'
+                            ],
+                            'documentName' => [
+                                'type' => 'string',
+                                'description' => 'Name of the document. Existing document: ' . DocumentType::getExistingDocument()
+                            ]
+                        ]
+                    ]
+                ],
+            ],
         ]);
-        foreach ($reponseIA->choices as $reponse) {
+
+        foreach ($AiResponse->choices as $reponse) {
             if ($reponse->finishReason == 'function_call') {
-                $retour = $this->gestionAppelFonction($reponse);
+                $result = $this->functionCall($reponse);
             } else {
-                $retour['text'] = $reponse->message->content;
-                $retour['type'] = FunctionCallStructure::TYPE_TEXT;
+                $result['text'] = $reponse->message->content;
+                $result['type'] = ResponseType::TEXT->value;
             }
         }
 
-        return $retour;
+        return $result;
     }
+
 
     /**
      * @param $reponse
      *
      * @return array
      */
-    public function gestionAppelFonction($reponse): array
+    public function functionCall($reponse): array
     {
-        $nomFonction = $reponse->message->functionCall->name;
+        $functionName = $reponse->message->functionCall->name;
         $arguments = json_decode($reponse->message->functionCall->arguments, true);
-        $retour = $this->functionCallService->appelerFonction($nomFonction, $arguments);
+        $result = $this->functionCallService->appelerFonction($functionName, $arguments);
 
-        $this->messages[] = ['role' => 'function', 'name' => $nomFonction, 'content' => $retour['infos']];
+        $this->messages[] = ['role' => 'function', 'name' => $functionName, 'content' => $result['infos']];
 
-        return $this->recupererReponseIA();
+        $result['text'] = $this->getAiResponse()['text'];
+
+        return $result;
     }
 }

@@ -1,8 +1,5 @@
 <?php
 
-// Classe permettant de récuperer les jetons JWT pour connexion sécuriser via un service d'API qui nous fournis simplement
-// l'URI de base, l'utilisateur et mdp fourni dans security.yaml de l'API source
-
 namespace App\Service\Api;
 
 use App\Enumeration\HttpHeaders;
@@ -11,43 +8,64 @@ use Symfony\Component\HttpFoundation\Request;
 class AuthentificationService extends AbstractApiService
 {
 
-    protected string $baseUrl;
+    /**
+     * @var string $defaultUrl
+     */
+    protected string $defaultUrl;
 
-    protected string $utilisateur;
+    /**
+     * @var string
+     */
+    protected string $user;
 
-    protected string $motDePasse;
+    /**
+     * @var string $password
+     */
+    protected string $password;
 
-    protected string $jeton;
+    /**
+     * @var string $token
+     */
+    protected string $token;
 
 
-    public function recupererJeton($baseUrl, $utilisateur, $motDePasse)
+    /**
+     * @param $defaultUrl
+     * @param $user
+     * @param $password
+     *
+     * @return mixed|string
+     */
+    public function getToken($defaultUrl, $user, $password): mixed
     {
-        $this->baseUrl=  $baseUrl;
-        $this->utilisateur = $utilisateur;
-        $this->motDePasse = $motDePasse;
+        $this->defaultUrl = $defaultUrl;
+        $this->user = $user;
+        $this->password = $password;
 
-        if(empty($this->jeton)){
-            $this->jeton = $this->authentification();
+        if (empty($this->token)) {
+            $this->token = $this->authentification();
         }
 
-        return $this->jeton;
+        return $this->token;
     }
 
-    public function authentification()
+    /**
+     * @return mixed|string
+     */
+    public function authentification(): mixed
     {
         $headers[HttpHeaders::CONTENT_TYPE->value] = HttpHeaders::APPLICATION_JSON->value;
         $reponse = $this->call(
             route: '/login_check',
-            parametres: [
-                'username' => $this->utilisateur,
-                'password' => $this->motDePasse,
+            parameters: [
+                'username' => $this->user,
+                'password' => $this->password,
             ],
-            methode: Request::METHOD_POST,
-            headers: array_merge($this->headersParDefaut, $headers),
-            debug: $this->debug
+            method: Request::METHOD_POST,
+            headers: array_merge($this->defaultHeaders, $headers),
         );
 
-        $this->jeton = $this->validerReponse($reponse)->get('token');
-        return $this->jeton;
+        $this->token = $this->responseValidate($reponse)->get('token');
+        return $this->token;
     }
 }

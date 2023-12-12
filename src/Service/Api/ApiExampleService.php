@@ -1,18 +1,35 @@
 <?php
 
-// Fichier Service d'une api fictive. Cela permet le call vers n'importe qu'elle API utilisant les token JWT
-
 namespace App\Service\Api;
 
-use AllowDynamicProperties;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-
-#[AllowDynamicProperties] class ApiExampleService extends AbstractApiService
+class ApiExampleService extends AbstractApiService
 {
-    const URL_EXAMPLE = '/route-example/%s';
+
+    const URL_EXAMPLE = '/url-example/%s';
+
+    /**
+     * @var string
+     */
+    protected string $password;
+
+    /**
+     * @var string
+     */
+    protected string $user;
+
+    /**
+     * @var HttpClientInterface
+     */
+    protected HttpClientInterface $client;
+
+    /**
+     * @var mixed|string
+     */
+    protected mixed $token;
 
     /**
      * @param ParameterBagInterface   $parametres
@@ -27,22 +44,22 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
         LoggerInterface $logger
     ) {
         parent::__construct($client, $logger);
-        $this->baseUrl = $parametres->get('API_EXAMPLE_HOST');
-        $this->utilisateur = $parametres->get('API_EXAMPLE_USER');
-        $this->motDePasse = $parametres->get('API_EXAMPLE_PASS');
+        $this->defaultUrl = $parametres->get('API_EXAMPLE_HOST');
+        $this->user = $parametres->get('API_EXAMPLE_USER');
+        $this->password = $parametres->get('API_EXAMPLE_PASS');
         $this->client = $client;
-        $this->jeton = $authentificationService->recupererJeton($this->baseUrl, $this->utilisateur, $this->motDePasse);
+        $this->token = $authentificationService->getToken($this->defaultUrl, $this->user, $this->password);
     }
 
     /**
-     * @param int $argumentExample
+     * @param int $argumentsExample
      *
      * @return int|mixed|null
      */
-    public function functionExample(int $argumentExample): mixed
+    public function fonctionExample(int $argumentsExample): mixed
     {
-        $retour = $this->call(route: sprintf(self::URL_EXAMPLE, $argumentExample), token: $this->jeton);
+        $result = $this->call(route: sprintf(self::URL_EXAMPLE, $argumentsExample), token: $this->token);
 
-        return json_decode($retour->getContenu());
+        return json_decode($result->getContent());
     }
 }

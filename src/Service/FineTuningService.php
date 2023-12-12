@@ -2,7 +2,6 @@
 
 namespace App\Service;
 
-use AllowDynamicProperties;
 use Exception;
 use LLPhant\Chat\Enums\OpenAIChatModel;
 use OpenAI;
@@ -12,9 +11,18 @@ use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 /**
  * Class FineTuningService
  */
-#[AllowDynamicProperties]
 class FineTuningService
 {
+    /**
+     * @var LoggerInterface $logger
+     */
+    private LoggerInterface $logger;
+
+    /**
+     * @var OpenAI\Client $openAiClient
+     */
+    private OpenAI\Client $openAiClient;
+
     /**
      * @param LoggerInterface       $logger
      * @param ParameterBagInterface $parameterBag

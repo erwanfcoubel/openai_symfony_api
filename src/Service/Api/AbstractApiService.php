@@ -1,15 +1,11 @@
 <?php
 
-//Fichier créer par mon collegue sur une autre API, que j'ai repris et modifier pour coller à ce projet.
-//Je travaille actuellement pour le refactoriser et pourquoi pas trouver une nouvelle structure de fichier.
-
 namespace App\Service\Api;
 
-use AllowDynamicProperties;
 use App\Entity\ApiReponse;
 use App\Enumeration\HttpHeaders;
-use App\Exception\Api\ExceptionReponseApiKo;
-use App\Exception\Api\ExceptionReponseApiNull;
+use App\Exception\Api\ErrorApiResponseException;
+use App\Exception\Api\NullApiResponseException;
 use Exception;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,22 +17,28 @@ use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-/**
- * Classe Abstraite permettant de construire un service ayant pour but de communiquer avec une API
- */
-#[AllowDynamicProperties] abstract class AbstractApiService
+abstract class AbstractApiService
 {
     /**
-     * Valeur à définir dans le constructeur des ApiService issus de cette classe.
      *
      * @var string
      */
-    protected string $baseUrl = '';
+    protected string $defaultUrl = '';
 
     /**
-     * @var array $headersParDefaut
+     * @var array $defaultHeaders
      */
-    protected array $headersParDefaut = [];
+    protected array $defaultHeaders = [];
+
+    /**
+     * @var HttpClientInterface
+     */
+    protected HttpClientInterface $httpClient;
+
+    /**
+     * @var LoggerInterface
+     */
+    protected LoggerInterface $logger;
 
     /**
      * @param HttpClientInterface $httpClient
@@ -50,44 +52,37 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 
     /**
-     * Retournes un objet ResponseInterface contenant les éléments de la réponse si l'appel est bien effectué.
-     * null si une Exception est rencontrée.
-     * Si vous souhaitez garantir le caractère non null, pensez à utiliser la méthode validerReponse()
-     *
-     * @param string      $route      le Endpoint ciblé
-     * @param array       $parametres un array qui contient les paramètres (GET/POST) de la requête
-     * @param string      $methode    GET par défaut
-     * @param array       $headers    un array avec les headers de la requête
-     * @param string|null $basicAuth  // couple 'login:mdp' (string) pour les endpoints configuré avec une basic-auth
-     *                                (Si précisé et non-null, cette valeur vient écraser la valeur si déjà définie dans $headers)
-     * @param string|null $token      // Bearer token pour les endpoints qui nécessitent une authentification
-     *                                (Si précisé et non-null, cette valeur vient écraser la valeur si déjà définie dans $headers)
+     * @param string      $route
+     * @param array       $parameters
+     * @param string      $method
+     * @param array       $headers
+     * @param string|null $basicAuth
+     * @param string|null $token
      * @param bool        $debug
-     * @param bool        $contenuUniquement
+     * @param bool        $contentOnly
      *
-     * @return ApiReponse|null Retournes un objet ResponseInterface contenant les éléments de la réponse si l'appel est bien effectué.
-     * null si une Exception est rencontrée.
+     * @return ApiReponse|null
      */
     public function call(
         string $route,
-        array $parametres = [],
-        string $methode = Request::METHOD_GET,
+        array $parameters = [],
+        string $method = Request::METHOD_GET,
         array $headers = [],
         string $basicAuth = null,
         string $token = null,
         bool $debug = false,
-        bool $contenuUniquement = false
+        bool $contentOnly = false
     ): ?ApiReponse {
         $options = [];
 
         if (
             isset($headers[HttpHeaders::CONTENT_TYPE->value])
             && $headers[HttpHeaders::CONTENT_TYPE->value] === HttpHeaders::APPLICATION_JSON->value
-            && !empty($parametres)
+            && !empty($parameters)
         ) {
-            $options[HttpHeaders::JSON->value] = $parametres;
-        } elseif (!empty($parametres)) {
-            $options[$methode == Request::METHOD_GET ? HttpHeaders::QUERY->value : HttpHeaders::BODY->value] = $parametres;
+            $options[HttpHeaders::JSON->value] = $parameters;
+        } elseif (!empty($parameters)) {
+            $options[$method == Request::METHOD_GET ? HttpHeaders::QUERY->value : HttpHeaders::BODY->value] = $parameters;
         }
 
         if (!empty($basicAuth)) {
@@ -96,17 +91,17 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
             $headers[HttpHeaders::AUTHORIZATION->value] = HttpHeaders::BEARER->value . $token;
         }
 
-        $headers = $this->setEntetesPourTrace($headers);
+        $headers = $this->setHeadersForTrace($headers);
 
         if (!empty($headers)) {
             $options['headers'] = $headers;
         }
 
-        $url = $this->baseUrl . $route;
+        $url = $this->defaultUrl . $route;
 
         if ($debug) {
             dump([
-                'methode' => $methode,
+                'methode' => $method,
                 'url' => $url,
                 'options' => $options
             ]);
@@ -114,9 +109,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
         try {
             $traceApi = (bool)($_ENV['APP_TRACE_API'] ?? 0);
-            $this->logger->info('Appel API : ' . $url, $traceApi ? [json_encode($parametres)] : []);
-            $reponse = $this->httpClient->request($methode, $url, $options);
-            $data = $contenuUniquement ? [] : $reponse->toArray();
+            $this->logger->info('Appel API : ' . $url, $traceApi ? [json_encode($parameters)] : []);
+            $reponse = $this->httpClient->request($method, $url, $options);
+            $data = $contentOnly ? [] : $reponse->toArray();
             if ($debug) {
                 dump([
                     'reponseComplete' => $reponse,
@@ -151,13 +146,11 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
     }
 
     /**
-     * Code retour d'un objet ApiReponse compris entre 200 et 400 exclus
-     *
      * @param ApiReponse|null $reponse
      *
      * @return bool
      */
-    public function estRetourOk(ApiReponse|null $reponse): bool
+    public function isKoResult(ApiReponse|null $reponse): bool
     {
         return !empty($reponse)
             && Response::HTTP_OK <= $reponse->getHttpCode()
@@ -165,20 +158,18 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
     }
 
     /**
-     * Permet de garantir que la réponse retournée par la méthode call() est valide et de type ApiReponse non null
-     *
      * @param ApiReponse|null $reponse
      *
      * @return ApiReponse
      */
-    public function validerReponse(ApiReponse|null $reponse): ApiReponse
+    public function responseValidate(ApiReponse|null $reponse): ApiReponse
     {
         if (empty($reponse)) {
-            throw new ExceptionReponseApiNull();
+            throw new NullApiResponseException();
         }
 
-        if (!$this->estRetourOk($reponse)) {
-            throw new ExceptionReponseApiKo();
+        if (!$this->isKoResult($reponse)) {
+            throw new ErrorApiResponseException();
         }
 
         return $reponse;
@@ -189,7 +180,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
      *
      * @return array
      */
-    private function setEntetesPourTrace(array $headers): array
+    private function setHeadersForTrace(array $headers): array
     {
         $headers['X-App'] = $_ENV['CURRENT_APP'];
 
